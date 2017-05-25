@@ -1,0 +1,523 @@
+/*________________________________________________________________________________________________
+Projet de recherche stochastique : Université de Strasbourg (2017)
+Paoli Raphael / Schmitt Franck [M1 ILC]
+Création d'un emploi du temps
+________________________________________________________________________________________________*/
+
+
+
+/************************************************************************************************/
+/***************///             	LIBRAIRIES ET DEFINES 			             ///*************/
+/************************************************************************************************/
+\User declarations : 
+
+	#include <math.h>
+	#include <string>
+	#include <cstring>
+	#include <stdio.h> 
+	#include <stdlib.h> 
+	#include <time.h> 
+	#include <limits.h>
+	#include <vector>
+	#include <algorithm>
+	#include <iostream>
+	#include <fstream>
+
+	#define Abs(x) ((x) < 0 ? -(x) : (x))
+	#define MAX(x,y) ((x)>(y)?(x):(y))
+	#define MIN(x,y) ((x)<(y)?(x):(y))
+
+	#define BIGPENALTY		100000		/* 		= Valeur de pénalité contrainte oblig	*/
+	#define MEDPENALTY		1000		/* 		= Valeur de pénalité contrainte forte	*/
+	#define LOWPENALTY		1			/* 		= Valeur de pénalité contrainte faible	*/
+
+	#define NBPAPERS 		263
+
+
+/************************************************************************************************/
+/***************///             DECLARATION DES VARIABLES GLOBALES               ///*************/
+/************************************************************************************************/
+
+	float	pMutPerGene			= 0.5;	/* 		= probabilité de mutation par individu		*/
+	int		nbCreneauxManquants	= 0;	/* 		= nombre de creneaux suposés manquants		*/
+	clock_t	start, finish;				/* 		= permet l'estimation du temps de calcul	*/
+	double	duration;					/* 		= temps de calcul							*/
+
+	typedef struct {
+		int paperID;
+		int esessionID;
+		int duration;
+		//int UTC;
+		vector<int> availabilities;
+	} Paper;
+
+	vector<Paper> papers;
+
+\end
+
+
+
+/************************************************************************************************/
+/***************///             DECLARATION DES FONCTIONS GLOBALES               ///*************/
+/************************************************************************************************/
+\User functions:
+
+	vector<string> split(string str, string sep)
+	{
+		char* cstr = const_cast<char*>(str.c_str());
+		char* current;
+		vector<string> arr;
+		current = strtok(cstr, sep.c_str());
+		while(current != NULL)
+		{
+			arr.push_back(current);
+			current = strtok(NULL, sep.c_str());
+		}
+		return arr;
+	}
+
+
+	vector<int> convertMin(string s, int journee)
+	{
+		vector<int> res;
+
+		// S'il y a rien on push une journée entière de disponibilité
+		if (s == "")
+		{
+			int minpassees = 24*60*journee;
+
+			res.push_back(0 + minpassees);
+			res.push_back(24*60 + minpassees);
+
+			return res;
+		}
+
+		s.erase(std::remove(s.begin(), s.end(), '['), s.end());
+		s.erase(std::remove(s.begin(), s.end(), ']'), s.end());
+
+		vector<string> arr = split(s, "-");
+		for (size_t i = 0; i < arr.size() ; i++)
+		{
+			int valeur;
+			// On récupère des données sous la forme : "8:05" ou "9" ou "6" ou "7:30"
+			vector<string> nb_list = split(arr[i], ":");
+			if (nb_list.size() == 1)
+			{
+				valeur = atoi(nb_list[0].c_str());
+			}
+			else
+			{
+				valeur = atoi(nb_list[1].c_str()) + atoi(nb_list[0].c_str())*60;
+			}
+
+			// On push dans res
+			res.push_back(valeur);
+		}
+
+		return res;
+	}
+
+
+	void readpapersFile()
+	{
+		ifstream fPaper;
+		fPaper.open("data.csv", ios::in);
+		if (fPaper.is_open()) 
+		{
+			string line = "";
+			getline (fPaper, line);
+			while ( getline (fPaper, line) )
+			{
+				Paper p;
+
+				// Fill paper
+				vector<string> arr;
+				arr = split(line,",");
+
+				p.paperID 		= atoi(arr[0].c_str());
+				p.esessionID 	= atoi(arr[2].c_str());
+				p.duration 		= atoi(arr[3].c_str());
+
+				string d1 = "";
+				if (arr[5] != "|")
+					d1 = arr[5].c_str();
+				string d2 = "";
+				if (arr[6] != "|")
+					d2 = arr[6].c_str();
+				string d3 = "";
+				if (arr[7] != "|")
+					d3 = arr[7].c_str();
+				vector<int> pref1 = convertMin(d1, 0);
+				vector<int> pref2 = convertMin(d2, 1);
+				vector<int> pref3 = convertMin(d3, 2);
+
+				// Regroupper les 3 std::vectors
+				for (size_t i = 0; i < pref1.size() ; i++)
+					p.availabilities.push_back(pref1[i]);
+				for (size_t i = 0; i < pref2.size() ; i++)
+					p.availabilities.push_back(pref2[i]);
+				for (size_t i = 0; i < pref3.size() ; i++)
+					p.availabilities.push_back(pref3[i]);
+
+				papers.push_back(p);
+			}
+			fPaper.close();
+		}
+	}
+
+
+	/* Fonction de convertion, permet de changer une valeur numérique en texte pour son affichage	*/
+	template<typename T>
+	string chiffre2string(T c) 
+	{ 
+		ostringstream oss; oss << c; 
+		return oss.str(); 
+	}
+
+
+	Paper* getPaperById(int id)
+	{
+		vector<Paper>::iterator it;  // declare an iterator to a vector of strings
+		for (it = papers.begin() ; it < papers.end(); it++) 
+		{
+			if (it->paperID == id)
+			{
+				return &*it;
+			}
+		}
+		return NULL;
+	}
+
+
+	bool chevauchementCreneau(int id1, int starting_time1, int id2, int starting_time2) 
+	{
+		Paper* papUn 	= getPaperById(id1);
+		Paper* papDeux 	= getPaperById(id2);
+
+		if (starting_time1 >= starting_time2 && starting_time1 <= starting_time2+papDeux->duration)
+		{
+			return false;
+		}
+		else if (starting_time1+papUn->duration >= starting_time2 && starting_time1+papUn->duration <= starting_time2+papDeux->duration)
+		{
+			return false;
+		}
+		else if (starting_time2 >= starting_time1 && starting_time2 <= starting_time1+papUn->duration)
+		{
+			return false;
+		}
+		else if (starting_time2+papDeux->duration >= starting_time1 && starting_time2+papDeux->duration <= starting_time1+papUn->duration)
+		{
+			return false;
+		}
+		return true;
+	}
+
+
+	int getDifferences(int id1, int starting_time1, int id2, int starting_time2) 
+	{
+		int    difference 	= 0;
+		Paper* papUn 		= getPaperById(id1);
+		Paper* papDeux 		= getPaperById(id2);
+
+		if (starting_time1 < starting_time2)
+		{
+			difference = starting_time2 - starting_time1 + papUn->duration;
+		}
+		else
+		{
+			difference = starting_time1 - starting_time2 + papDeux->duration;
+		}
+		return difference;
+	}
+
+
+	string minutesToHourString(int minutes)
+	{
+		int hour = minutes / 60;
+		int min  = minutes % 60;
+
+		string hourSring = chiffre2string(hour);
+		if (hourSring.length() == 1)
+			hourSring = "0" + hourSring;
+
+		string minString = chiffre2string(min);
+		if (minString.length() == 1)
+			minString = "0" + minString;
+
+		return hourSring + ":" + minString;
+	}
+
+\end
+
+
+
+/************************************************************************************************/
+/**************///             DECLARATION DES FONCTIONS TEMPORELLES               ///***********/
+/************************************************************************************************/
+\Before everything else function:
+
+	start = clock();
+	readpapersFile();
+
+\end
+
+\After everything else function:
+
+	finish = clock();
+	/* Affichage du meilleur individu */
+	bBest->printOn(cout);
+
+	/* Estimation et affichage du temps de calcul */
+	duration = (double) (finish - start) / CLOCKS_PER_SEC;
+	cout << "OBJECTIF\t\t:\t" << "Atteindre 0 pts." << endl;
+	cout << "MEILLEUR SCORE\t\t:\t" << bBest->evaluate() << " pts" << endl;
+	printf("TEMPS D'EXECUTION\t:\t%2.1f secondes\n", duration);
+
+\end
+
+\At the beginning of each generation function:
+
+\end
+
+\At the end of each generation function:
+
+\end
+
+\At each generation before reduce function:
+
+\end
+
+
+/************************************************************************************************/
+/*******************///             DECLARATION DES CLASSES               ///********************/
+/************************************************************************************************/
+\User classes :
+
+	/* Classe représentant un génome, soit un emplois du temps complet.				*/
+	GenomeClass
+	{ 
+		int id 				[NBPAPERS];
+		int	starting_time 	[NBPAPERS];
+		int score 			[NBPAPERS];
+	}
+
+\end
+
+
+
+/************************************************************************************************/
+/********************///                  INITIALISATION                   ///*******************/
+/************************************************************************************************/
+\GenomeClass::initialiser :
+
+	for (uint i = 0; i < NBPAPERS; i++)
+	{
+		Genome.id[i] = papers[i].paperID;
+		//Vérification créneaux préf D1,D2,D3
+		int debutpos = (int) random(0, papers[i].availabilities.size()/2 - 1) * 2;
+		int finpos 	 = debutpos + 1;
+		
+		Genome.starting_time[i] = (int) random(papers[i].availabilities[debutpos], papers[i].availabilities[finpos]);
+		// on reset le score
+		Genome.score[i] = INT_MIN;
+	}
+
+\end
+
+
+
+/************************************************************************************************/
+/********************///                     CROSS-OVER                    ///*******************/
+/************************************************************************************************/
+\GenomeClass::crossover :
+
+	double dScoreP1g = 0;
+	double dScoreP1d = 0;
+	double dScoreP2g = 0;
+	double dScoreP2d = 0;
+	int pos = random(0, NBPAPERS-1) + 1;
+
+	for (int i=0; i < pos; i++)
+	{
+		dScoreP1g += parent1.score[i];
+		dScoreP2d += parent2.score[i+pos];
+	}
+	for (uint i=pos; i < NBPAPERS; i++)
+	{
+		dScoreP1d += parent1.score[i-pos];
+		dScoreP2g += parent2.score[i];
+	}
+
+	if (dScoreP1g+dScoreP2d > dScoreP2g+dScoreP1d)
+	{
+		for (int i=0; i < pos; i++)
+		{
+			child.id[i] 			= parent1.id[i];
+			child.score[i] 			= INT_MIN;
+			child.starting_time[i] 	= parent1.starting_time[i];
+		}
+		for (uint i=pos; i < NBPAPERS; i++)
+		{
+			child.id[i] 			= parent2.id[i];
+			child.score[i] 			= INT_MIN;
+			child.starting_time[i] 	= parent2.starting_time[i];
+		}
+	}
+	else
+	{
+		for (int i=0; i < pos; i++)
+		{
+			child.id[i] 			= parent2.id[i];
+			child.score[i] 			= INT_MIN;
+			child.starting_time[i] 	= parent2.starting_time[i];
+		}
+		for (uint i=pos; i < NBPAPERS; i++)
+		{
+			child.id[i] 			= parent1.id[i];
+			child.score[i] 			= INT_MIN;
+			child.starting_time[i] 	= parent1.starting_time[i];
+		}
+	}
+
+\end
+
+
+
+/************************************************************************************************/
+/********************///                      MUTATION                     ///*******************/
+/************************************************************************************************/
+\GenomeClass::mutator : // retourne le nombre de mutations
+
+	float 	fMutProbPerGene = ((currentGeneration % 40) / 40.0) * (NBPAPERS*.005) + .1;
+	int		nbMutations 	= 0;
+
+	for (uint i = 0; i < NBPAPERS; i++)
+	{
+		if ( tossCoin(fMutProbPerGene) )
+		{
+			int debutpos 	= random(0, papers[i].availabilities.size()/2 - 1) * 2;
+			int finpos 		= debutpos + 1;
+			
+			Genome.starting_time[i] = random(papers[i].availabilities[debutpos], papers[i].availabilities[finpos]);
+
+			nbMutations++;
+		}
+	}
+	return nbMutations;
+
+\end
+
+
+
+/************************************************************************************************/
+/********************///                     EVALUATION                    ///*******************/
+/************************************************************************************************/
+\GenomeClass::evaluator : // retourne le score
+
+	float score = 0;
+
+	for (uint i = 0; i < NBPAPERS; i++)
+	{
+		int currentScore = INT_MIN;
+
+		// On note le papier en cours en remplissant currentScore
+		Paper* cur_paper = getPaperById(Genome.id[i]);
+		for(uint j = 0; j < NBPAPERS; j++)
+		{
+			if (Genome.id[j] != cur_paper->paperID)
+			{
+				// Chevauchement e-session	o
+				Paper* tmp = getPaperById(Genome.id[j]);		
+				if (cur_paper->esessionID == 150 || tmp->esessionID == cur_paper->esessionID)
+				{
+					if (chevauchementCreneau(Genome.id[i], Genome.starting_time[i], Genome.id[j], Genome.starting_time[j]))
+					{
+						currentScore -= BIGPENALTY;
+					}
+					currentScore -= getDifferences(Genome.id[i], Genome.starting_time[i], Genome.id[j], Genome.starting_time[j]) * LOWPENALTY;
+				}
+			}
+		}
+
+		Genome.score[i] = currentScore;
+		score += currentScore;
+	}
+
+	return score;
+
+\end
+
+
+
+/************************************************************************************************/
+/********************///                     AFFICHAGE                     ///*******************/
+/************************************************************************************************/
+\GenomeClass::display:
+
+	string const nomFichier("data.out");
+	ofstream monFlux( nomFichier.c_str() );
+	if ( monFlux )
+	{
+		for (uint i=0; i < NBPAPERS; i++)
+		{
+			int id 				= Genome.id[i];
+			int starting_time 	= Genome.starting_time[i];
+
+			Paper* current 		= getPaperById(id);
+
+			monFlux << "id: " 		  << id 				 	 << "\t\t|\t\t";
+			monFlux << "esessionID: " << current->esessionID 	 << "\t\t|\t\t";
+			if (current->duration < 10)
+				monFlux << "duration: "   << current->duration	 << "\t\t|\t\t";
+			else
+				monFlux << "duration: "   << current->duration	 << "\t|\t\t";
+
+			if (starting_time < 24*60)
+				monFlux << "start: 30/09/2015 " << minutesToHourString(starting_time) 			<< "\t\t|\t\t";
+			else if (starting_time < 24*60*2)
+				monFlux << "start: 01/10/2015 " << minutesToHourString(starting_time-(24*60))   << "\t\t|\t\t";
+			else
+				monFlux << "start: 02/10/2015 " << minutesToHourString(starting_time-(24*60*2)) << "\t\t|\t\t";
+
+			monFlux << endl;			
+		}
+	}
+	else
+	{
+		cout << "ERREUR: Impossible d'ouvrir le fichier de sortie" << endl;
+	}
+
+\end
+
+
+
+/************************************************************************************************/
+/********************///                     PARAMETRAGE                    ///******************/
+/************************************************************************************************/
+\User Makefile options: 
+	CPPFLAGS+=
+\end
+
+\Default run parameters : 	 // Please let the parameters appear in this order
+
+	Number of generations:		100     		// NB_GEN
+	Time limit:					120				// In seconds, 0 to deactivate
+	Population size:			100				// POP_SIZE
+	Offspring size:				40%				// 40% 
+	Mutation probability:		1       		// MUT_PROB
+	Crossover probability:		1	      		// XOVER_PROB
+	Evaluator goal:				Maximise		// Maximise
+	Selection operator:			Tournament 2.0
+	Surviving parents:			90%				// Percentage or absolute  
+	Surviving offspring:		90%
+	Reduce parents operator:	Tournament 2
+	Reduce offspring operator:	Tournament 2
+	Final reduce operator:		Tournament 2
+
+	Save population:			true
+	Start from file:			false
+
+	Plot stats:					false
+
+\end

@@ -483,23 +483,20 @@ ________________________________________________________________________________
 
 			Paper* current 		= getPaperById(id);
 
-			monFlux << "id: " 		  << id 				 	 << "\t\t|\t\t";
-			monFlux << "esessionID: " << current->esessionID 	 << "\t\t|\t\t";
-
-			monFlux << "utc: " 		  << current->utc			 << "\t\t|\t\t";
-
+			monFlux << id << ",";
+			monFlux << current->esessionID << ",";
 
 			if (current->duration < 10)
-				monFlux << "duration: "   << current->duration	 << "\t\t|\t\t";
+				monFlux << current->duration << ",";
 			else
-				monFlux << "duration: "   << current->duration	 << "\t|\t\t";
+				monFlux << current->duration << ",";
 
 			if (starting_time < 24*60)
-				monFlux << "start: 30/09/2015 " << minutesToHourString(starting_time) 			<< "\t\t|\t\t";
+				monFlux << "30/09/2015 " << minutesToHourString(starting_time);
 			else if (starting_time < 24*60*2)
-				monFlux << "start: 01/10/2015 " << minutesToHourString(starting_time-(24*60))   << "\t\t|\t\t";
+				monFlux << "01/10/2015 " << minutesToHourString(starting_time-(24*60));
 			else
-				monFlux << "start: 02/10/2015 " << minutesToHourString(starting_time-(24*60*2)) << "\t\t|\t\t";
+				monFlux << "02/10/2015 " << minutesToHourString(starting_time-(24*60*2));
 
 			monFlux << endl;			
 		}

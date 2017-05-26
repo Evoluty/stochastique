@@ -491,12 +491,13 @@ ________________________________________________________________________________
 			else
 				monFlux << current->duration << ",";
 
-			if (starting_time < 24*60)
-				monFlux << "30/09/2015 " << minutesToHourString(starting_time);
-			else if (starting_time < 24*60*2)
-				monFlux << "01/10/2015 " << minutesToHourString(starting_time-(24*60));
-			else
-				monFlux << "02/10/2015 " << minutesToHourString(starting_time-(24*60*2));
+			// if (starting_time < 24*60)
+			// 	monFlux << "30/09/2015 " << minutesToHourString(starting_time);
+			// else if (starting_time < 24*60*2)
+			// 	monFlux << "01/10/2015 " << minutesToHourString(starting_time-(24*60));
+			// else
+			// 	monFlux << "02/10/2015 " << minutesToHourString(starting_time-(24*60*2));
+			monFlux << starting_time;
 
 			monFlux << endl;			
 		}

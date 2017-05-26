@@ -27,7 +27,7 @@ ________________________________________________________________________________
 	#define MAX(x,y) ((x)>(y)?(x):(y))
 	#define MIN(x,y) ((x)<(y)?(x):(y))
 
-	#define BIGPENALTY		100000		/* 		= Valeur de pénalité contrainte oblig	*/
+	#define BIGBONUS		10000000	/* 		= Valeur de pénalité contrainte oblig	*/
 	#define MEDPENALTY		1000		/* 		= Valeur de pénalité contrainte forte	*/
 	#define LOWPENALTY		1			/* 		= Valeur de pénalité contrainte faible	*/
 
@@ -47,7 +47,7 @@ ________________________________________________________________________________
 		int paperID;
 		int esessionID;
 		int duration;
-		//int UTC;
+		double utc;
 		vector<int> availabilities;
 	} Paper;
 
@@ -138,6 +138,8 @@ ________________________________________________________________________________
 				p.esessionID 	= atoi(arr[2].c_str());
 				p.duration 		= atoi(arr[3].c_str());
 
+				stringstream(arr[4].c_str()) >> p.utc;
+
 				string d1 = "";
 				if (arr[5] != "|")
 					d1 = arr[5].c_str();
@@ -194,23 +196,23 @@ ________________________________________________________________________________
 		Paper* papUn 	= getPaperById(id1);
 		Paper* papDeux 	= getPaperById(id2);
 
-		if (starting_time1 >= starting_time2 && starting_time1 <= starting_time2+papDeux->duration)
+		if (starting_time1 <= starting_time2 && starting_time1+papUn->duration >= starting_time2)
 		{
-			return false;
+			return true;
 		}
-		else if (starting_time1+papUn->duration >= starting_time2 && starting_time1+papUn->duration <= starting_time2+papDeux->duration)
+		else if (starting_time1 <= starting_time2 && starting_time1+papUn->duration >= starting_time2+papDeux->duration)
 		{
-			return false;
+			return true;
 		}
-		else if (starting_time2 >= starting_time1 && starting_time2 <= starting_time1+papUn->duration)
+		else if (starting_time1 >= starting_time2 && starting_time2+papDeux->duration >= starting_time1)
 		{
-			return false;
+			return true;
 		}
-		else if (starting_time2+papDeux->duration >= starting_time1 && starting_time2+papDeux->duration <= starting_time1+papUn->duration)
+		else if (starting_time1 >= starting_time2 && starting_time2+papDeux->duration >= starting_time1+papUn->duration)
 		{
-			return false;
+			return true;
 		}
-		return true;
+		return false;
 	}
 
 
@@ -315,12 +317,20 @@ ________________________________________________________________________________
 	{
 		Genome.id[i] = papers[i].paperID;
 		//Vérification créneaux préf D1,D2,D3
-		int debutpos = (int) random(0, papers[i].availabilities.size()/2 - 1) * 2;
+		int debutpos = (int) random(0, papers[i].availabilities.size()/2) * 2;
 		int finpos 	 = debutpos + 1;
 		
-		Genome.starting_time[i] = (int) random(papers[i].availabilities[debutpos], papers[i].availabilities[finpos]);
+		int start 	 = (int) random(papers[i].availabilities[debutpos], papers[i].availabilities[finpos]+1) + (papers[i].utc * 60);
+
+		if (start < 0)
+			Genome.starting_time[i] = 0;
+		else if (start > 60*24*3)
+			Genome.starting_time[i] = (60*24*3) - papers[i].duration;
+		else
+			Genome.starting_time[i] = start;
+		
 		// on reset le score
-		Genome.score[i] = INT_MIN;
+		Genome.score[i] = 0;
 	}
 
 \end
@@ -396,10 +406,17 @@ ________________________________________________________________________________
 	{
 		if ( tossCoin(fMutProbPerGene) )
 		{
-			int debutpos 	= random(0, papers[i].availabilities.size()/2 - 1) * 2;
+			int debutpos 	= random(0, papers[i].availabilities.size()/2) * 2;
 			int finpos 		= debutpos + 1;
 			
-			Genome.starting_time[i] = random(papers[i].availabilities[debutpos], papers[i].availabilities[finpos]);
+			int start 	 	= (int) random(papers[i].availabilities[debutpos], papers[i].availabilities[finpos]+1) + (papers[i].utc * 60);
+
+			if (start < 0)
+				Genome.starting_time[i] = 0;
+			else if (start > 60*24*3)
+				Genome.starting_time[i] = (60*24*3) - papers[i].duration;
+			else
+				Genome.starting_time[i] = start;
 
 			nbMutations++;
 		}
@@ -419,7 +436,7 @@ ________________________________________________________________________________
 
 	for (uint i = 0; i < NBPAPERS; i++)
 	{
-		int currentScore = INT_MIN;
+		int currentScore = 0;
 
 		// On note le papier en cours en remplissant currentScore
 		Paper* cur_paper = getPaperById(Genome.id[i]);
@@ -431,9 +448,9 @@ ________________________________________________________________________________
 				Paper* tmp = getPaperById(Genome.id[j]);		
 				if (cur_paper->esessionID == 150 || tmp->esessionID == cur_paper->esessionID)
 				{
-					if (chevauchementCreneau(Genome.id[i], Genome.starting_time[i], Genome.id[j], Genome.starting_time[j]))
+					if (!chevauchementCreneau(Genome.id[i], Genome.starting_time[i], Genome.id[j], Genome.starting_time[j]))
 					{
-						currentScore -= BIGPENALTY;
+						currentScore += BIGBONUS;
 					}
 					currentScore -= getDifferences(Genome.id[i], Genome.starting_time[i], Genome.id[j], Genome.starting_time[j]) * LOWPENALTY;
 				}
@@ -468,6 +485,10 @@ ________________________________________________________________________________
 
 			monFlux << "id: " 		  << id 				 	 << "\t\t|\t\t";
 			monFlux << "esessionID: " << current->esessionID 	 << "\t\t|\t\t";
+
+			monFlux << "utc: " 		  << current->utc			 << "\t\t|\t\t";
+
+
 			if (current->duration < 10)
 				monFlux << "duration: "   << current->duration	 << "\t\t|\t\t";
 			else
@@ -501,7 +522,7 @@ ________________________________________________________________________________
 
 \Default run parameters : 	 // Please let the parameters appear in this order
 
-	Number of generations:		100     		// NB_GEN
+	Number of generations:		200     		// NB_GEN
 	Time limit:					120				// In seconds, 0 to deactivate
 	Population size:			100				// POP_SIZE
 	Offspring size:				40%				// 40% 

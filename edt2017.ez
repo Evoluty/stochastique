@@ -451,7 +451,10 @@ ________________________________________________________________________________
 					if (!chevauchementCreneau(Genome.id[i], Genome.starting_time[i], Genome.id[j], Genome.starting_time[j]))
 					{
 						currentScore += BIGBONUS;
-					}
+					}					
+				}
+				if (tmp->esessionID == cur_paper->esessionID)
+				{
 					currentScore -= getDifferences(Genome.id[i], Genome.starting_time[i], Genome.id[j], Genome.starting_time[j]) * LOWPENALTY;
 				}
 			}

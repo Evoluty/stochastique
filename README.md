@@ -19,5 +19,5 @@ make
 
 To format the output in a readable file use
 ```
-python conv_format.py
+python convert_output.py
 ```

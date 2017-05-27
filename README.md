@@ -16,3 +16,8 @@ easea edt2017.ez
 make 
 ./edt2017 
 ```
+
+To format the output in a readable file use
+```
+python convert_output.py
+```
